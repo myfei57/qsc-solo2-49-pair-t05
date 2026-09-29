@@ -83,9 +83,61 @@ def test_weld_alarm_flow(client: FlaskClient) -> None:
     alarm = client.post("/api/weld/alarm").get_json()
     assert alarm["alarms"] == ["weld-overcurrent"]
     assert client.post("/api/weld/release").status_code == 409
-    cleared = client.post("/api/weld/clear").get_json()
+    # No ticket, no release.
+    bare = client.post("/api/weld/clear")
+    assert bare.status_code == 400
+    issued = client.post(
+        "/api/weld/permit?applicant=zhang.wei&basis=WO-441+signed&ttl=600"
+    ).get_json()
+    ticket_id = issued["permit"]["ticketId"]
+    assert issued["permit"]["applicant"] == "zhang.wei"
+    assert issued["permit"]["status"] == "issued"
+    cleared = client.post("/api/weld/clear?ticket=" + ticket_id).get_json()
     assert cleared["cleared"] is True
-    assert client.post("/api/weld/release").status_code == 200
+    # A consumed ticket cannot release a second trip.
+    client.post("/api/weld/alarm")
+    reused = client.post("/api/weld/clear?ticket=" + ticket_id)
+    assert reused.status_code == 409
+    assert reused.get_json()["detail"]["code"] == "permit-revoked"
+    assert client.post("/api/weld/release").status_code == 409
+
+
+def test_weld_permit_requires_applicant_and_basis(client: FlaskClient) -> None:
+    response = client.post("/api/weld/permit?basis=something&ttl=600")
+    assert response.status_code == 400
+    response = client.post("/api/weld/permit?applicant=zhang.wei&ttl=600")
+    assert response.status_code == 400
+
+
+def test_weld_unknown_ticket_is_conflict(client: FlaskClient) -> None:
+    client.post("/api/weld/alarm")
+    response = client.post("/api/weld/clear?ticket=nope")
+    assert response.status_code == 409
+    assert response.get_json()["detail"]["code"] == "permit-missing"
+
+
+def test_weld_equipment_change_invalidates_tickets(client: FlaskClient) -> None:
+    issued = client.post(
+        "/api/weld/permit?applicant=zhang.wei&basis=old+welder&ttl=600"
+    ).get_json()
+    ticket_id = issued["permit"]["ticketId"]
+    replaced = client.post("/api/weld/equipment").get_json()
+    assert replaced["generation"] == 1
+    client.post("/api/weld/alarm")
+    response = client.post("/api/weld/clear?ticket=" + ticket_id)
+    assert response.status_code == 409
+    assert response.get_json()["detail"]["code"] == "permit-stale"
+    fresh = client.post(
+        "/api/weld/permit?applicant=wang.fang&basis=new+welder+accepted&ttl=600"
+    ).get_json()
+    assert client.post("/api/weld/clear?ticket=" + fresh["permit"]["ticketId"]).status_code == 200
+
+
+def test_weld_permit_history_endpoint(client: FlaskClient) -> None:
+    client.post("/api/weld/permit?applicant=zhang.wei&basis=first&ttl=600")
+    client.post("/api/weld/permit?applicant=li.qiang&basis=second&ttl=600")
+    permits = client.get("/api/weld/permits").get_json()["permits"]
+    assert [permit["applicant"] for permit in permits][:2] == ["li.qiang", "zhang.wei"]
 
 
 def test_events_stream_records_bus_traffic(client: FlaskClient) -> None:

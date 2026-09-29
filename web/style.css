@@ -217,3 +217,46 @@ main {
 .step-bad {
   color: #c0392b;
 }
+
+.hint {
+  font-size: 13px;
+  color: #627d98;
+  margin: 4px 0 10px;
+}
+
+.permit {
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.permit-row,
+.permit-meta {
+  padding: 2px 0;
+}
+
+.permit-empty {
+  color: #c0392b;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.permit-verdict {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.permit-verdict.valid {
+  background: #e6ffed;
+  color: #1f9d55;
+}
+
+.permit-verdict.invalid {
+  background: #fdecea;
+  color: #c0392b;
+}

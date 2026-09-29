@@ -49,11 +49,25 @@
 
   <section id="tab-ops" class="tabpage hidden">
     <div class="panel">
+      <h2>焊机复位票据</h2>
+      <p class="hint">过流跳闸后，复位联锁必须出示一张在有效期内的放行票据；无票、过期或设备换代后的票据一律拒绝。</p>
+      <div id="permitBox" class="permit"></div>
+      <form class="inline" data-form="weld-permit">
+        <label>申请人<input name="applicant" type="text" placeholder="工号 / 姓名" required></label>
+        <label>放行依据<input name="basis" type="text" placeholder="工单号 / 检查结论" required></label>
+        <label>有效时长(秒)<input name="ttl" type="number" step="1" min="1" max="1800" value="1800"></label>
+        <button type="submit">开具放行票据</button>
+      </form>
+      <div class="ops">
+        <button data-op="weld-clear">凭当前票据复位</button>
+        <button data-op="weld-equipment">设备换代登记</button>
+      </div>
+    </div>
+    <div class="panel">
       <h2>焊接与张力</h2>
       <div class="ops">
         <button data-op="weld-confirm">焊接并提速</button>
         <button data-op="weld-alarm">过流告警</button>
-        <button data-op="weld-clear">告警复位</button>
         <button data-op="weld-release">联锁释放</button>
       </div>
       <form class="inline" data-form="weld-power">
@@ -173,6 +187,7 @@
             <option value="track">track</option>
             <option value="latch">latch</option>
             <option value="alarm">alarm</option>
+            <option value="permit">permit</option>
             <option value="recover">recover</option>
             <option value="stop">stop</option>
             <option value="audit">audit</option>

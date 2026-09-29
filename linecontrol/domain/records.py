@@ -171,3 +171,54 @@ class LatchSnapshot:
             alarm=bool(raw.get("alarm", False)),
             saved=_stamp(raw.get("saved")),
         )
+
+
+#: Lifecycle of a time-limited interlock release ticket.
+TICKET_ISSUED = "issued"
+TICKET_CONSUMED = "consumed"
+TICKET_VOID = "void"
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseTicket:
+    """A time-limited, single-use permit to release the welder interlock.
+
+    ``generation`` is the equipment revision the ticket was issued against;
+    after an equipment change-over every ticket carrying an older generation
+    is refused, even before it reaches its wall-clock expiry.
+    """
+
+    ticket_id: str = ""
+    applicant: str = ""
+    basis: str = ""
+    generation: int = 0
+    issued_at: datetime = field(default_factory=utcnow)
+    expires_at: datetime = field(default_factory=utcnow)
+    status: str = TICKET_ISSUED
+    consumed_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ticketId": self.ticket_id,
+            "applicant": self.applicant,
+            "basis": self.basis,
+            "generation": self.generation,
+            "issuedAt": self.issued_at.isoformat(),
+            "expiresAt": self.expires_at.isoformat(),
+            "status": self.status,
+            "consumedAt": self.consumed_at.isoformat() if self.consumed_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ReleaseTicket":
+        consumed = raw.get("consumedAt")
+        return cls(
+            ticket_id=str(raw.get("ticketId", "")),
+            applicant=str(raw.get("applicant", "")),
+            basis=str(raw.get("basis", "")),
+            generation=int(raw.get("generation", 0)),
+            issued_at=_stamp(raw.get("issuedAt")),
+            expires_at=_stamp(raw.get("expiresAt")),
+            status=str(raw.get("status", TICKET_ISSUED)),
+            consumed_at=_stamp(consumed) if consumed else None,
+        )

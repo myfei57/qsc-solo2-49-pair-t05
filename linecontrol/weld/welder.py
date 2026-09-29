@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 from ..bus import EventBus
+from ..domain.events import utcnow
 from ..domain.machine import StateMachine
 from ..domain.records import Confirm
 from ..store.filestore import FileStore
 from .arc import ArcOps
 from .gate import GateOps
 from .latch import LatchOps
+from .permit import PermitOps
 from .persist import PersistOps
 from .power import PowerOps
 from .seams import SeamsOps
@@ -18,7 +21,7 @@ from .splice import SpliceOps
 from .state import WeldStateData, new_weld_machine
 
 
-class Welder(GateOps, ArcOps, SpliceOps, LatchOps, PowerOps, PersistOps, SeamsOps):
+class Welder(GateOps, ArcOps, SpliceOps, LatchOps, PermitOps, PowerOps, PersistOps, SeamsOps):
     """Gates the arc on the current alignment confirmation.
 
     The alignment lookup is a callable rather than a stored copy so that a
@@ -31,10 +34,12 @@ class Welder(GateOps, ArcOps, SpliceOps, LatchOps, PowerOps, PersistOps, SeamsOp
         align: Callable[[], Confirm],
         store: FileStore,
         bus: EventBus,
+        clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._align = align
         self._store = store
         self._bus = bus
+        self._clock = clock
         self._state = WeldStateData()
         self._machine: StateMachine = new_weld_machine()
 
@@ -65,6 +70,8 @@ class Welder(GateOps, ArcOps, SpliceOps, LatchOps, PowerOps, PersistOps, SeamsOp
             "seam": self.seam_id(),
             "alarm": self.alarm_active(),
             "interlock": self.interlock_ok(),
+            "generation": self.equipment_generation(),
+            "permit": self.permit_view(),
             "tension": self.tension(),
             "heatInput": self.heat_input(),
             "voltage": voltage,

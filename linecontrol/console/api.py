@@ -49,6 +49,13 @@ def int_param(request: Request, name: str, default: int) -> int:
         raise ApiParamError(name, raw) from error
 
 
+def str_param(request: Request, name: str) -> str:
+    raw = request.args.get(name, "").strip()
+    if not raw:
+        raise ApiParamError(name, raw)
+    return raw
+
+
 class Api:
     """Holds the line plus the event stream shown on the overview page."""
 
@@ -156,6 +163,11 @@ class Api:
         seams = self.line.weld_seams(limit)
         return {"ok": True, "seams": [seam.to_dict() for seam in seams]}
 
+    def weld_permits(self, request: Request) -> dict[str, object]:
+        limit = int_param(request, "limit", DEFAULT_SEAM_LIMIT)
+        permits = self.line.weld_permits(limit)
+        return {"ok": True, "permits": [ticket.to_dict() for ticket in permits]}
+
     def tension_persisted(self, request: Request) -> dict[str, object]:
         snapshot, ok = self.line.persisted_tension()
         return {"ok": True, "persisted": ok, "snapshot": snapshot.to_dict()}
@@ -188,8 +200,20 @@ class Api:
         return {"ok": True, "alarms": self.line.audit.active_alarms()}
 
     def weld_clear(self, request: Request) -> dict[str, object]:
-        cleared = self.line.clear_weld_alarm()
+        cleared = self.line.clear_weld_alarm(str_param(request, "ticket"))
         return {"ok": True, "cleared": cleared}
+
+    def weld_permit_issue(self, request: Request) -> dict[str, object]:
+        ticket = self.line.issue_weld_permit(
+            str_param(request, "applicant"),
+            str_param(request, "basis"),
+            float_param(request, "ttl"),
+        )
+        return {"ok": True, "permit": ticket.to_dict()}
+
+    def weld_equipment_replace(self, request: Request) -> dict[str, object]:
+        generation = self.line.replace_welder()
+        return {"ok": True, "generation": generation}
 
     def weld_release(self, request: Request) -> dict[str, object]:
         self.line.splice_release()

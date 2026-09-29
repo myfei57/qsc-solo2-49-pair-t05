@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..domain.events import Event
 from ..domain.kinds import EventKind
-from ..domain.records import TensionSnapshot, WeldRecord
+from ..domain.records import ReleaseTicket, TensionSnapshot, WeldRecord
 from ..pickle.dosing import DosePlan
 from ..pump.errors import PumpError, PumpErrorCode
 from ..tension.state import RampPlan
@@ -24,8 +24,20 @@ class CommandOps:
         self.last_backup = self.store.backup()
         self.audit.raise_alarm(WELD_OVER_CURRENT)
 
-    def clear_weld_alarm(self) -> bool:
-        self.weld.alarm_clear()
+    def issue_weld_permit(
+        self, applicant: str, basis: str, ttl_seconds: float
+    ) -> ReleaseTicket:
+        return self.weld.issue_permit(applicant, basis, ttl_seconds)
+
+    def replace_welder(self) -> int:
+        return self.weld.replace_equipment()
+
+    def weld_permits(self, limit: int = 0) -> list[ReleaseTicket]:
+        return self.weld.permit_history(limit)
+
+    def clear_weld_alarm(self, ticket_id: str) -> bool:
+        ticket = self.weld.validate_permit(ticket_id)
+        self.weld.alarm_clear(ticket)
         return self.audit.clear_alarm(WELD_OVER_CURRENT)
 
     def splice_release(self) -> None:

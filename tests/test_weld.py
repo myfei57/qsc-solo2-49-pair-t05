@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from linecontrol.bus import EventBus
+from linecontrol.domain.kinds import EventKind
 from linecontrol.domain.records import Confirm, LatchSnapshot, utcnow
 from linecontrol.store.filestore import FileStore
 from linecontrol.weld.errors import WeldError, WeldErrorCode
@@ -55,7 +56,8 @@ def test_arc_is_blocked_while_the_latch_is_held(tmp_path) -> None:
     with pytest.raises(WeldError) as caught:
         welder.arc()
     assert caught.value.code is WeldErrorCode.LATCH_HELD
-    welder.alarm_clear()
+    ticket = welder.issue_permit("zhang.wei", "insulation resistance re-tested OK")
+    welder.alarm_clear(ticket)
     welder.gate_arc()
     welder.arc()
     assert welder.interlock_ok()
@@ -136,3 +138,128 @@ def test_snapshot_exposes_the_transition_history(tmp_path) -> None:
     view = welder.snapshot()
     assert view["state"] == WeldState.WELDING
     assert view["transitions"] == [WeldState.IDLE, WeldState.GATED, WeldState.WELDING]
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = utcnow()
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        from datetime import timedelta
+
+        self.now = self.now + timedelta(seconds=seconds)
+
+
+def build_clocked(tmp_path):
+    aligner = Aligner()
+    clock = FakeClock()
+    welder = Welder(aligner, FileStore(tmp_path), EventBus(), clock=clock)
+    return welder, aligner, clock
+
+
+def test_clear_refuses_without_a_ticket(tmp_path) -> None:
+    welder, _ = build(tmp_path)
+    welder.alarm()
+    with pytest.raises(WeldError) as caught:
+        welder.alarm_clear()
+    assert caught.value.code is WeldErrorCode.PERMIT_MISSING
+    assert welder.interlock_ok() is False
+
+
+def test_ticket_is_single_use(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "work order WO-441 signed off")
+    welder.alarm()
+    welder.alarm_clear(welder.validate_permit(ticket.ticket_id))
+    assert welder.interlock_ok()
+    welder.alarm()
+    with pytest.raises(WeldError) as caught:
+        welder.alarm_clear(welder.validate_permit(ticket.ticket_id))
+    assert caught.value.code is WeldErrorCode.PERMIT_REVOKED
+
+
+def test_ticket_expires_after_its_ttl(tmp_path) -> None:
+    welder, _, clock = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "short maintenance window", ttl_seconds=30)
+    clock.advance(31)
+    welder.alarm()
+    with pytest.raises(WeldError) as caught:
+        welder.alarm_clear(welder.validate_permit(ticket.ticket_id))
+    assert caught.value.code is WeldErrorCode.PERMIT_EXPIRED
+    assert welder.interlock_ok() is False
+    assert welder.permit_history()[0].status == "void"
+
+
+def test_equipment_change_voids_outstanding_tickets(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "before the welder swap")
+    assert welder.replace_equipment() == 1
+    welder.alarm()
+    with pytest.raises(WeldError) as caught:
+        welder.alarm_clear(welder.validate_permit(ticket.ticket_id))
+    assert caught.value.code is WeldErrorCode.PERMIT_STALE
+    fresh = welder.issue_permit("wang.fang", "new welder acceptance test passed")
+    welder.alarm_clear(welder.validate_permit(fresh.ticket_id))
+    assert welder.interlock_ok()
+
+
+def test_unknown_ticket_is_rejected(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    welder.alarm()
+    with pytest.raises(WeldError) as caught:
+        welder.alarm_clear(welder.validate_permit("does-not-exist"))
+    assert caught.value.code is WeldErrorCode.PERMIT_MISSING
+
+
+def test_issue_requires_applicant_and_basis(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    with pytest.raises(WeldError) as caught:
+        welder.issue_permit("  ", "basis")
+    assert caught.value.code is WeldErrorCode.PERMIT_MISSING
+    with pytest.raises(WeldError) as caught:
+        welder.issue_permit("li.qiang", "")
+    assert caught.value.code is WeldErrorCode.PERMIT_MISSING
+
+
+def test_ttl_is_capped_at_the_policy_ceiling(tmp_path) -> None:
+    from linecontrol.weld.permit import MAX_TTL_SECONDS
+
+    welder, _, _ = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "asking for too long", ttl_seconds=10**9)
+    span = (ticket.expires_at - ticket.issued_at).total_seconds()
+    assert span == pytest.approx(MAX_TTL_SECONDS)
+
+
+def test_ticket_persists_across_restart(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "survive the restart")
+    rebuilt = Welder(Aligner(), welder.store, EventBus(), clock=utcnow)
+    validated = rebuilt.validate_permit(ticket.ticket_id)
+    assert validated.applicant == "li.qiang"
+    assert validated.basis == "survive the restart"
+
+
+def test_permit_view_reports_validity_and_remaining_time(tmp_path) -> None:
+    welder, _, clock = build_clocked(tmp_path)
+    ticket = welder.issue_permit("li.qiang", "window", ttl_seconds=120)
+    view = welder.permit_view()
+    assert view["ticketId"] == ticket.ticket_id
+    assert view["valid"] is True
+    assert view["remainingSeconds"] == pytest.approx(120)
+    clock.advance(121)
+    assert welder.permit_view()["valid"] is False
+
+
+def test_permit_events_identify_the_applicant(tmp_path) -> None:
+    welder, _, _ = build_clocked(tmp_path)
+    events = []
+    welder.bus.subscribe(EventKind.PERMIT, events.append)
+    ticket = welder.issue_permit("chen.ye", "WO-902")
+    welder.alarm()
+    welder.alarm_clear(welder.validate_permit(ticket.ticket_id))
+    messages = [event.message for event in events]
+    assert any("issued" in message and "chen.ye" in message for message in messages)
+    assert any("consumed" in message and "WO-902" in message for message in messages)

@@ -87,6 +87,46 @@ function renderState(state) {
   }
 }
 
+function renderPermit(weld) {
+  const box = document.getElementById("permitBox");
+  if (!box) {
+    return;
+  }
+  const permit = weld && weld.permit;
+  box.innerHTML = "";
+  const meta = document.createElement("div");
+  meta.className = "permit-meta";
+  meta.textContent = "设备代号: " + (weld ? weld.generation : 0);
+  box.appendChild(meta);
+  if (!permit) {
+    const empty = document.createElement("div");
+    empty.className = "permit-empty";
+    empty.textContent = "当前无放行票据，禁止复位。";
+    box.appendChild(empty);
+    return;
+  }
+  const statusMap = { issued: "已开具", consumed: "已使用", void: "已作废" };
+  const lines = [
+    ["票据号", permit.ticketId],
+    ["申请人", permit.applicant],
+    ["依据", permit.basis],
+    ["状态", statusMap[permit.status] || permit.status],
+    ["签发时间", permit.issuedAt ? new Date(permit.issuedAt).toLocaleString() : "-"],
+    ["到期时间", permit.expiresAt ? new Date(permit.expiresAt).toLocaleString() : "-"],
+    ["剩余秒数", Math.round(permit.remainingSeconds || 0)],
+  ];
+  lines.forEach(function (entry) {
+    const row = document.createElement("div");
+    row.className = "permit-row" + (entry[0] === "状态" && permit.valid ? " permit-ok" : "");
+    row.textContent = entry[0] + ": " + entry[1];
+    box.appendChild(row);
+  });
+  const verdict = document.createElement("div");
+  verdict.className = "permit-verdict " + (permit.valid ? "valid" : "invalid");
+  verdict.textContent = permit.valid ? "本票可放行（一次性）" : "本票不可放行";
+  box.appendChild(verdict);
+}
+
 function renderEvents(events) {
   const list = document.getElementById("auditList");
   list.innerHTML = "";
@@ -129,6 +169,7 @@ async function refresh() {
   try {
     const data = await loadJSON("/api/state");
     renderState(data.state || {});
+    renderPermit(data.state ? data.state.weld : null);
     renderSequence(data.state ? data.state.sequence : null);
     const summary = await loadJSON("/api/audit/summary");
     renderSummary(summary.summary || {});
@@ -153,7 +194,14 @@ async function refreshAudit(kind, limit) {
 const OP_CALLS = {
   "weld-confirm": () => post("/api/weld/confirm"),
   "weld-alarm": () => post("/api/weld/alarm"),
-  "weld-clear": () => post("/api/weld/clear"),
+  "weld-clear": async () => {
+    const permit = await currentPermitId();
+    if (!permit) {
+      throw new Error("没有有效放行票据，禁止复位");
+    }
+    return post("/api/weld/clear", { ticket: permit });
+  },
+  "weld-equipment": () => post("/api/weld/equipment"),
   "weld-release": () => post("/api/weld/release"),
   "dry-heat": () => post("/api/dry/heat"),
   "dry-reheat": () => post("/api/dry/reheat"),
@@ -165,7 +213,14 @@ const OP_CALLS = {
   },
 };
 
+async function currentPermitId() {
+  const data = await loadJSON("/api/state");
+  const permit = data.state && data.state.weld ? data.state.weld.permit : null;
+  return permit && permit.valid ? permit.ticketId : null;
+}
+
 const FORM_CALLS = {
+  "weld-permit": (form) => post("/api/weld/permit", readForm(form)),
   "weld-power": (form) => post("/api/weld/power", readForm(form)),
   "weld-splice": (form) => post("/api/weld/splice", readForm(form)),
   "tension-ramp": (form) => post("/api/tension/ramp", readForm(form)),

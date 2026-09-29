@@ -147,7 +147,8 @@ def test_alarm_and_clear_pair(line: Line) -> None:
     assert line.last_backup is not None
     with pytest.raises(Exception):
         line.splice_release()
-    assert line.clear_weld_alarm() is True
+    ticket = line.issue_weld_permit("li.qiang", "WO-441 insulation test signed", 600)
+    assert line.clear_weld_alarm(ticket.ticket_id) is True
     assert line.audit.active_alarms() == []
     line.splice_release()
 

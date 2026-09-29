@@ -80,3 +80,18 @@ def test_recovery_leaves_a_foreign_gain_alone(tmp_path: Path) -> None:
     recovered = Line(tmp_path)
     recovered.recover()
     assert recovered.tension.gain() == 1.0
+
+
+def test_recovery_keeps_permits_and_equipment_generation(tmp_path: Path) -> None:
+    line = Line(tmp_path)
+    line.recover()
+    line.alarm_overcurrent()
+    line.replace_welder()
+    ticket = line.issue_weld_permit("zhang.wei", "post-swap acceptance", 600)
+
+    recovered = Line(tmp_path)
+    recovered.recover()
+    assert recovered.weld.equipment_generation() == 1
+    assert recovered.weld.interlock_ok() is False
+    recovered.weld.alarm_clear(recovered.weld.validate_permit(ticket.ticket_id))
+    assert recovered.weld.interlock_ok() is True

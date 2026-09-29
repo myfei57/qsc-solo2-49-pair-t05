@@ -20,6 +20,7 @@ class EventKind(str, Enum):
     TRACK = "track"
     LATCH = "latch"
     ALARM = "alarm"
+    PERMIT = "permit"
     RECOVER = "recover"
     STOP = "stop"
     AUDIT = "audit"
@@ -44,6 +45,7 @@ STREAM_KINDS: tuple[EventKind, ...] = (
     EventKind.TRACK,
     EventKind.LATCH,
     EventKind.ALARM,
+    EventKind.PERMIT,
     EventKind.RECOVER,
     EventKind.STOP,
     EventKind.AUDIT,

@@ -10,6 +10,10 @@ class WeldErrorCode(str, Enum):
     ARC_BLOCKED = "arc-blocked"
     LATCH_HELD = "latch-held"
     POWER_INVALID = "power-invalid"
+    PERMIT_MISSING = "permit-missing"
+    PERMIT_EXPIRED = "permit-expired"
+    PERMIT_REVOKED = "permit-revoked"
+    PERMIT_STALE = "permit-stale"
 
 
 class WeldError(RuntimeError):

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from ..domain.events import Event
 from ..domain.kinds import EventKind
-from ..domain.records import LatchSnapshot, utcnow
+from ..domain.records import LatchSnapshot, ReleaseTicket, utcnow
 from ..store.keys import KEY_LATCH
 from ..store.snapshot import save_json
+from .errors import WeldError, WeldErrorCode
 
 
 class LatchOps:
@@ -20,12 +21,33 @@ class LatchOps:
             Event(kind=EventKind.ALARM, source="weld", message="overcurrent")
         )
 
-    def alarm_clear(self) -> None:
+    def alarm_clear(self, ticket: ReleaseTicket | None = None) -> None:
+        """Release the interlock against a validated, unconsumed ticket.
+
+        The ticket is validated here as well as by the caller so the latch
+        can never be released without an auditor-grade record of who
+        authorised it and why.
+        """
+
+        if ticket is None:
+            raise WeldError(
+                WeldErrorCode.PERMIT_MISSING,
+                "a valid release ticket is required to reset the interlock",
+            )
+        ticket = self.validate_permit(ticket.ticket_id)
         self.data.alarm = False
         self.data.latch = False
         self._save_latch()
+        self.consume_permit(ticket)
         self.bus.publish(
-            Event(kind=EventKind.LATCH, source="weld", message="interlock released")
+            Event(
+                kind=EventKind.LATCH,
+                source="weld",
+                message=(
+                    f"interlock released by {ticket.applicant} "
+                    f"permit={ticket.ticket_id}"
+                ),
+            )
         )
 
     def interlock_ok(self) -> bool:
