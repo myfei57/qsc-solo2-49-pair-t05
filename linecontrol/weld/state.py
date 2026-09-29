@@ -42,6 +42,7 @@ class WeldStateData:
     tension: float = 0.0
     latch: bool = False
     alarm: bool = False
+    generation: int = 0
     voltage: float = 0.0
     current: float = 0.0
     line_speed: float = 0.0

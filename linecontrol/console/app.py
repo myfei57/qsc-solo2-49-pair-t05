@@ -8,9 +8,22 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from ..line.machine import Line
+from ..permit.errors import PermitError, PermitErrorCode
 from .api import Api, ApiParamError
 
 Handler = Callable[[object], dict[str, object]]
+
+#: Ticket-gate failures that read as client errors rather than state fights.
+_PERMIT_STATUS = {
+    PermitErrorCode.UNKNOWN_ACTOR: 403,
+    PermitErrorCode.FORBIDDEN: 403,
+    PermitErrorCode.BAD_TICKET: 400,
+    PermitErrorCode.BAD_SIGNATURE: 400,
+    PermitErrorCode.TICKET_NOT_FOUND: 404,
+    PermitErrorCode.TTL_INVALID: 400,
+    PermitErrorCode.BASIS_REQUIRED: 400,
+    PermitErrorCode.EQUIPMENT_GENERATION_INVALID: 400,
+}
 
 #: Content types served from the static web root.
 STATIC_TYPES = {
@@ -41,6 +54,10 @@ def _route_table(api: Api) -> tuple[tuple[str, str, Handler], ...]:
         ("/api/weld/alarm", "POST", api.weld_alarm),
         ("/api/weld/clear", "POST", api.weld_clear),
         ("/api/weld/release", "POST", api.weld_release),
+        ("/api/weld/permits", "GET", api.weld_permits_list),
+        ("/api/weld/permits/issue", "POST", api.weld_permits_issue),
+        ("/api/weld/permits/revoke", "POST", api.weld_permits_revoke),
+        ("/api/weld/replace", "POST", api.weld_replace),
         ("/api/tension/calibrate", "POST", api.tension_calibrate),
         ("/api/tension/ramp", "POST", api.tension_ramp),
         ("/api/tension/persisted", "GET", api.tension_persisted),
@@ -85,6 +102,8 @@ def _bind(handler: Handler) -> Callable[[], tuple[Response, int]]:
             payload = handler(request)
         except ApiParamError as error:
             return jsonify({"ok": False, "error": str(error)}), 400
+        except PermitError as error:
+            return jsonify(_error_payload(error)), _PERMIT_STATUS.get(error.code, 409)
         except RuntimeError as error:
             return jsonify(_error_payload(error)), 409
         return jsonify(payload), 200

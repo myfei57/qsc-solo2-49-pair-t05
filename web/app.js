@@ -34,6 +34,14 @@ function post(path, params) {
   return loadJSON(path + query, { method: "POST", headers: { Accept: "application/json" } });
 }
 
+function postJSON(path, body) {
+  return loadJSON(path, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+}
+
 function setText(id, value) {
   const node = document.getElementById(id);
   if (node) {
@@ -152,8 +160,10 @@ async function refreshAudit(kind, limit) {
 
 const OP_CALLS = {
   "weld-confirm": () => post("/api/weld/confirm"),
-  "weld-alarm": () => post("/api/weld/alarm"),
-  "weld-clear": () => post("/api/weld/clear"),
+  "weld-alarm": async () => {
+    await post("/api/weld/alarm");
+    await refreshPermits();
+  },
   "weld-release": () => post("/api/weld/release"),
   "dry-heat": () => post("/api/dry/heat"),
   "dry-reheat": () => post("/api/dry/reheat"),
@@ -183,6 +193,51 @@ const FORM_CALLS = {
   "exit-weight": (form) => post("/api/exit/weight", readForm(form)),
   "cycle": (form) => post("/api/cycle", readForm(form)),
   "audit-query": (form) => refreshAudit(form.kind.value, form.limit.value),
+  "weld-permit-issue": async (form) => {
+    const fields = readForm(form);
+    const data = await postJSON("/api/weld/permits/issue", {
+      applicant: fields.applicant,
+      basis: fields.basis,
+      issued_by: fields.issued_by,
+      operator: fields.operator,
+      ttl_minutes: Number(fields.ttl_minutes),
+    });
+    form.elements.namedItem("lastTicket").value = data.token;
+    await refreshPermits();
+  },
+  "weld-permit-redeem": async (form) => {
+    const fields = readForm(form);
+    const data = await postJSON("/api/weld/clear", {
+      ticket: fields.ticket,
+      operator: fields.operator,
+    });
+    form.reset();
+    window.alert(
+      "已放行：票据 " + data.released.ticket + "\n申请人 " + data.released.applicant +
+      "\n依据 " + data.released.basis
+    );
+    await refreshPermits();
+  },
+  "weld-permit-revoke": async (form) => {
+    const fields = readForm(form);
+    await postJSON("/api/weld/permits/revoke", {
+      ticket: fields.ticket,
+      revoked_by: fields.revoked_by,
+      reason: fields.reason,
+    });
+    form.reset();
+    await refreshPermits();
+  },
+  "weld-replace": async (form) => {
+    const fields = readForm(form);
+    const data = await postJSON("/api/weld/replace", {
+      actor: fields.actor,
+      basis: fields.basis,
+    });
+    form.reset();
+    window.alert("焊机已换代为第 " + data.generation + " 代，旧票据全部失效");
+    await refreshPermits();
+  },
 };
 
 function readForm(form) {
@@ -191,6 +246,34 @@ function readForm(form) {
     data[key] = value;
   });
   return data;
+}
+
+async function refreshPermits() {
+  try {
+    const data = await loadJSON("/api/weld/permits");
+    renderPermits(data.tickets || []);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function renderPermits(tickets) {
+  const list = document.getElementById("permitList");
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  tickets.forEach(function (ticket) {
+    const li = document.createElement("li");
+    li.className = "permit-" + ticket.status;
+    li.textContent =
+      ticket.ticket_id + " [" + ticket.status + "] " +
+      "申请人:" + ticket.applicant + " 操作人:" + (ticket.operator || "-") +
+      " 跳闸#" + ticket.trip_no + " 代次:" + ticket.generation +
+      " 失效于:" + ticket.expires_at.replace("T", " ").slice(0, 19) +
+      " 依据:" + ticket.basis;
+    list.appendChild(li);
+  });
 }
 
 document.querySelectorAll("button[data-op]").forEach(function (button) {
@@ -237,4 +320,6 @@ document.querySelectorAll("button.tab").forEach(function (button) {
 });
 
 refresh();
+refreshPermits();
 setInterval(refresh, 3000);
+setInterval(refreshPermits, 5000);

@@ -155,12 +155,14 @@ class RinseSnapshot:
 class LatchSnapshot:
     interlock: bool = False
     alarm: bool = False
+    generation: int = 0
     saved: datetime = field(default_factory=utcnow)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "interlock": self.interlock,
             "alarm": self.alarm,
+            "generation": self.generation,
             "saved": self.saved.isoformat(),
         }
 
@@ -169,5 +171,6 @@ class LatchSnapshot:
         return cls(
             interlock=bool(raw.get("interlock", False)),
             alarm=bool(raw.get("alarm", False)),
+            generation=int(raw.get("generation", 0)),
             saved=_stamp(raw.get("saved")),
         )

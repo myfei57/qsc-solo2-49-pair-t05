@@ -10,6 +10,7 @@ from ..domain.phase import Phase
 from ..dry.dryer import Dryer
 from ..entry.controller import Controller as EntryController
 from ..exit.section import Exit
+from ..permit.office import PermitOffice
 from ..pickle.tank import Tank
 from ..pump.pump import Pump
 from ..store.filestore import FileStore
@@ -42,6 +43,8 @@ class Line(WorkflowOps, CommandOps, RecoveryOps, ViewOps):
         self.exit = Exit(self.pickle, self.strip, self.bus)
         self.dry = Dryer(self.exit.exhaust_ok, self.bus)
         self.weld = Welder(self.entry.confirm_state, self.store, self.bus)
+        self.permits = PermitOffice(self.store, self.bus)
+        self.weld.note_generation(self.permits.generation("welder"))
         self.entry.set_interlock_provider(self.weld.interlock_ok)
         self.tension.apply_setpoint(DEFAULT_SETPOINT)
         self.phase = Phase.IDLE

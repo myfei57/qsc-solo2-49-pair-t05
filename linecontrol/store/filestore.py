@@ -27,6 +27,9 @@ class FileStore:
     def directory(self) -> str:
         return str(self._dir)
 
+    def directory_path(self, key: str) -> Path:
+        return self._path(key)
+
     def _path(self, key: str) -> Path:
         if not key or "/" in key or "\\" in key or key in {".", ".."}:
             raise ValueError(f"invalid snapshot key: {key!r}")
@@ -38,6 +41,16 @@ class FileStore:
         with self._lock:
             tmp.write_bytes(payload)
             os.replace(tmp, path)
+
+    def append(self, key: str, payload: bytes) -> None:
+        """Append bytes to a snapshot, creating it when absent."""
+
+        path = self._path(key)
+        with self._lock:
+            with path.open("ab") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
 
     def load(self, key: str) -> bytes | None:
         path = self._path(key)

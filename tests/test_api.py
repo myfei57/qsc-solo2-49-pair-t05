@@ -83,9 +83,36 @@ def test_weld_alarm_flow(client: FlaskClient) -> None:
     alarm = client.post("/api/weld/alarm").get_json()
     assert alarm["alarms"] == ["weld-overcurrent"]
     assert client.post("/api/weld/release").status_code == 409
-    cleared = client.post("/api/weld/clear").get_json()
-    assert cleared["cleared"] is True
+
+    # No ticket, no release.
+    bare = client.post("/api/weld/clear", json={})
+    assert bare.status_code == 400
+
+    issued = client.post(
+        "/api/weld/permits/issue",
+        json={
+            "applicant": "u-operator",
+            "operator": "u-operator",
+            "issued_by": "u-supervisor",
+            "basis": "WO-9 overcurrent cleared",
+            "ttl_minutes": 60,
+        },
+    ).get_json()
+    token = issued["token"]
+    cleared = client.post(
+        "/api/weld/clear",
+        json={"ticket": token, "operator": "u-operator"},
+    ).get_json()
+    assert cleared["released"]["applicant"] == "u-operator"
     assert client.post("/api/weld/release").status_code == 200
+
+    # A ticket is single-use.
+    replay = client.post(
+        "/api/weld/clear",
+        json={"ticket": token, "operator": "u-operator"},
+    )
+    assert replay.status_code == 409
+    assert replay.get_json()["detail"]["code"] == "trip-not-found"
 
 
 def test_events_stream_records_bus_traffic(client: FlaskClient) -> None:

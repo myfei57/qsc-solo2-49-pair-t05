@@ -217,3 +217,26 @@ main {
 .step-bad {
   color: #c0392b;
 }
+
+.permits {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: #486581;
+}
+
+.permits li {
+  padding: 4px 8px;
+  border-left: 3px solid #9aa5b1;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.permit-active { border-left-color: #1f6f43; }
+.permit-used { border-left-color: #2b6cb0; }
+.permit-expired,
+.permit-revoked { border-left-color: #c0392b; }
+.permit-superseded { border-left-color: #b7791f; }
+
+.inline .wide { flex-basis: 100%; }

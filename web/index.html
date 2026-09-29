@@ -53,9 +53,34 @@
       <div class="ops">
         <button data-op="weld-confirm">焊接并提速</button>
         <button data-op="weld-alarm">过流告警</button>
-        <button data-op="weld-clear">告警复位</button>
         <button data-op="weld-release">联锁释放</button>
       </div>
+      <form class="inline" data-form="weld-permit-issue">
+        <label>申请人<input name="applicant" type="text" value="u-operator"></label>
+        <label>持票操作人<input name="operator" type="text" value="u-operator"></label>
+        <label>签发主管<input name="issued_by" type="text" value="u-supervisor"></label>
+        <label>有效期(分钟)<input name="ttl_minutes" type="number" step="1" value="120"></label>
+        <label>放行依据<input name="basis" type="text" value="检修单 WO-2026-091 已确认排除过流"></label>
+        <button type="submit">签发放行票据</button>
+        <label class="wide">票据令牌<input name="lastTicket" type="text" readonly placeholder="签发后在此取票据"></label>
+      </form>
+      <form class="inline" data-form="weld-permit-redeem">
+        <label>票据令牌<input name="ticket" type="text" required></label>
+        <label>操作人工号<input name="operator" type="text" value="u-operator" required></label>
+        <button type="submit">凭票复位</button>
+      </form>
+      <form class="inline" data-form="weld-permit-revoke">
+        <label>票据号<input name="ticket" type="text" placeholder="PT-..." required></label>
+        <label>撤销主管<input name="revoked_by" type="text" value="u-supervisor"></label>
+        <label>撤销原因<input name="reason" type="text" placeholder="原因" required></label>
+        <button type="submit">撤销票据</button>
+      </form>
+      <form class="inline" data-form="weld-replace">
+        <label>换代维修人<input name="actor" type="text" value="u-maintenance"></label>
+        <label>换代依据<input name="basis" type="text" placeholder="设备维修/更换记录号" required></label>
+        <button type="submit">焊机换代（旧票全部失效）</button>
+      </form>
+      <ul id="permitList" class="permits"></ul>
       <form class="inline" data-form="weld-power">
         <label>电压<input name="voltage" type="number" step="1" value="24"></label>
         <label>电流<input name="current" type="number" step="1" value="320"></label>
@@ -175,6 +200,7 @@
             <option value="alarm">alarm</option>
             <option value="recover">recover</option>
             <option value="stop">stop</option>
+            <option value="permit">permit</option>
             <option value="audit">audit</option>
           </select>
         </label>

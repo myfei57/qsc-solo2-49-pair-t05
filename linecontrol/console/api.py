@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from flask import Request
 
 from ..domain.events import Event
@@ -47,6 +49,28 @@ def int_param(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError as error:
         raise ApiParamError(name, raw) from error
+
+
+def json_body(request: Request) -> dict[str, object]:
+    """Read a JSON object body; empty bodies become an empty object."""
+
+    raw = request.get_data(cache=False, as_text=True)
+    if not raw.strip():
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except ValueError as error:
+        raise ApiParamError("body", raw) from error
+    if not isinstance(decoded, dict):
+        raise ApiParamError("body", raw)
+    return decoded
+
+
+def body_field(body: dict[str, object], name: str) -> str:
+    value = body.get(name, "")
+    if not isinstance(value, str) or not value.strip():
+        raise ApiParamError(name, "" if value is None else str(value))
+    return value.strip()
 
 
 class Api:
@@ -188,8 +212,48 @@ class Api:
         return {"ok": True, "alarms": self.line.audit.active_alarms()}
 
     def weld_clear(self, request: Request) -> dict[str, object]:
-        cleared = self.line.clear_weld_alarm()
-        return {"ok": True, "cleared": cleared}
+        body = json_body(request)
+        released = self.line.release_weld_latch(
+            body_field(body, "ticket"),
+            operator=body_field(body, "operator"),
+        )
+        return {"ok": True, "released": released}
+
+    def weld_permits_issue(self, request: Request) -> dict[str, object]:
+        body = json_body(request)
+        ttl_raw = body.get("ttl_minutes", 120)
+        try:
+            ttl = int(ttl_raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as error:
+            raise ApiParamError("ttl_minutes", str(ttl_raw)) from error
+        ticket, token = self.line.issue_weld_ticket(
+            body_field(body, "applicant"),
+            body_field(body, "basis"),
+            issued_by=body_field(body, "issued_by"),
+            ttl_minutes=ttl,
+            operator=str(body.get("operator", "") or "").strip(),
+        )
+        return {"ok": True, "ticket": ticket.to_dict(), "token": token}
+
+    def weld_permits_list(self, request: Request) -> dict[str, object]:
+        return {"ok": True, "tickets": [ticket.to_dict() for ticket in self.line.weld_tickets()]}
+
+    def weld_permits_revoke(self, request: Request) -> dict[str, object]:
+        body = json_body(request)
+        ticket = self.line.revoke_weld_ticket(
+            body_field(body, "ticket"),
+            revoked_by=body_field(body, "revoked_by"),
+            reason=body_field(body, "reason"),
+        )
+        return {"ok": True, "ticket": ticket.to_dict()}
+
+    def weld_replace(self, request: Request) -> dict[str, object]:
+        body = json_body(request)
+        generation = self.line.replace_welder(
+            actor=body_field(body, "actor"),
+            basis=body_field(body, "basis"),
+        )
+        return {"ok": True, "generation": generation}
 
     def weld_release(self, request: Request) -> dict[str, object]:
         self.line.splice_release()

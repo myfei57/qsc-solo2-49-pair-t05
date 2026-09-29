@@ -65,6 +65,7 @@ class Welder(GateOps, ArcOps, SpliceOps, LatchOps, PowerOps, PersistOps, SeamsOp
             "seam": self.seam_id(),
             "alarm": self.alarm_active(),
             "interlock": self.interlock_ok(),
+            "generation": self.generation(),
             "tension": self.tension(),
             "heatInput": self.heat_input(),
             "voltage": voltage,

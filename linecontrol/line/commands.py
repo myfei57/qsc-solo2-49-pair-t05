@@ -12,6 +12,9 @@ from ..tension.state import RampPlan
 #: Alarm identifier raised for a welder overcurrent trip.
 WELD_OVER_CURRENT = "weld-overcurrent"
 
+#: Protected equipment id of the welder.
+WELDER = "welder"
+
 
 class CommandOps:
     """Mixed into :class:`~linecontrol.line.machine.Line`."""
@@ -21,12 +24,65 @@ class CommandOps:
 
     def alarm_overcurrent(self) -> None:
         self.weld.alarm()
+        if self.permits.open_trip_view(WELDER) is None:
+            self.permits.open_trip(WELDER, reason="overcurrent")
         self.last_backup = self.store.backup()
         self.audit.raise_alarm(WELD_OVER_CURRENT)
 
     def clear_weld_alarm(self) -> bool:
+        """Legacy clear with no ticket; tests and recovery only."""
+
         self.weld.alarm_clear()
         return self.audit.clear_alarm(WELD_OVER_CURRENT)
+
+    def release_weld_latch(self, token: str, *, operator: str) -> dict[str, object]:
+        """Exchange a valid ticket for the interlock release, then clear it."""
+
+        ticket, trip = self.permits.redeem_ticket(WELDER, operator, token)
+        self.weld.alarm_clear()
+        self.audit.clear_alarm(WELD_OVER_CURRENT)
+        return {
+            "ticket": ticket.ticket_id,
+            "trip": trip.trip_no,
+            "applicant": ticket.applicant,
+            "operator": ticket.used_by,
+            "basis": ticket.basis,
+            "issued_by": ticket.issued_by,
+            "generation": ticket.generation,
+        }
+
+    def issue_weld_ticket(
+        self,
+        applicant: str,
+        basis: str,
+        *,
+        issued_by: str,
+        ttl_minutes: int = 120,
+        operator: str = "",
+    ) -> tuple[object, str]:
+        return self.permits.issue_ticket(
+            WELDER,
+            applicant,
+            basis,
+            issued_by=issued_by,
+            ttl_minutes=ttl_minutes,
+            operator=operator,
+        )
+
+    def revoke_weld_ticket(self, ticket_id: str, *, revoked_by: str, reason: str) -> object:
+        return self.permits.revoke_ticket(
+            ticket_id, revoked_by=revoked_by, reason=reason
+        )
+
+    def replace_welder(self, *, actor: str, basis: str) -> int:
+        """Record a welder replacement/retrofit and void every live ticket."""
+
+        equipment = self.permits.replace_equipment(WELDER, actor=actor, basis=basis)
+        self.weld.note_generation(equipment.generation)
+        return equipment.generation
+
+    def weld_tickets(self) -> tuple[object, ...]:
+        return self.permits.list_tickets(WELDER)
 
     def splice_release(self) -> None:
         self.entry.splice_release()

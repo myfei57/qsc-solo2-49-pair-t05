@@ -147,7 +147,14 @@ def test_alarm_and_clear_pair(line: Line) -> None:
     assert line.last_backup is not None
     with pytest.raises(Exception):
         line.splice_release()
-    assert line.clear_weld_alarm() is True
+    ticket, token = line.issue_weld_ticket(
+        "u-operator",
+        "WO-1 overcurrent cleared and inspected",
+        issued_by="u-supervisor",
+    )
+    released = line.release_weld_latch(token, operator="u-operator")
+    assert released["ticket"] == ticket.ticket_id
+    assert released["basis"] == "WO-1 overcurrent cleared and inspected"
     assert line.audit.active_alarms() == []
     line.splice_release()
 

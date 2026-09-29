@@ -24,6 +24,7 @@ class RecoveryOps:
         if state.gain > 0:
             self.tension.recalibrate(state.gain)
         self.weld.restore_latch(state.latch)
+        self.weld.note_generation(self.permits.generation("welder"))
         self.weld.restore_tension(state.tension)
         self.tension.restore_tension(state.tension)
         self.pickle.restore_acid(state.acid)
